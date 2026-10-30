@@ -1,0 +1,52 @@
+# wallmon configuration. Copy to /etc/wallmon/config.toml and adjust.
+#
+# Every section is optional. Without a file wallmon shows only what it finds
+# by itself (CPU, memory, disks, network, processes). A panel whose section is
+# missing and that cannot be detected is not drawn.
+
+[general]
+# Name shown in the header. Default: the system hostname.
+name = "myserver"
+
+[network]
+# Interfaces to graph. Default: the one with the default route.
+interfaces = ["eth0"]
+
+[apache]
+# mod_status in machine-readable form.
+status_url = "http://127.0.0.1/server-status?auto"
+
+[docker]
+socket = "/var/run/docker.sock"
+# Containers that must be running; a missing one is shown in red.
+expected = ["app", "shop"]
+
+[ups]
+# apcupsd NIS address.
+address = "127.0.0.1:3551"
+
+[mariadb]
+socket = "/run/mysqld/mysqld.sock"
+
+[postgresql]
+
+# One [[sites]] block per site. A site is OK on 200–399 unless `ok` says otherwise.
+[[sites]]
+url = "https://example.com/"
+
+[[sites]]
+# Behind Basic Auth, so 401 means it works.
+url = "https://private.example.com/"
+ok = [401]
+
+[services]
+# systemd units to watch.
+units = ["apache2", "mariadb", "postgresql", "docker", "fail2ban", "apcupsd", "ssh", "cron"]
+
+[fail2ban]
+# Jails to show, in this order. Empty means all jails.
+jails = ["sshd", "apache-auth", "apache-noscript"]
+
+[sensors]
+# Sensors to skip, as chip/sensor (e.g. one that reports nonsense).
+ignore = ["dell_smm/temp8"]

@@ -1,0 +1,17 @@
+# Rust build output
+/target/
+
+# Private notes and server configs stay local; config.toml.example is the public template
+/CLAUDE.md
+/.claude/
+/docs/
+/deploy/
+
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
