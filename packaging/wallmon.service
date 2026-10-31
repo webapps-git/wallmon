@@ -13,7 +13,7 @@ ConditionPathExists=/dev/tty0
 
 [Service]
 # --dpms-timeout=0: kmscon would otherwise blank the screen after 10 minutes without input.
-# --no-reset-env: wallmon needs PATH from systemd to find mariadb, runuser and the like.
+# --no-reset-env: wallmon needs PATH from systemd to find mariadb, setpriv and the like.
 # --oneshot: kmscon exits together with wallmon, and systemd starts both again.
 ExecStart=/usr/bin/kmscon --vt=tty1 --no-switchvt --oneshot --no-reset-env --dpms-timeout=0 \
     --no-mouse --no-blink --session-max=1 "--font-name=DejaVu Sans Mono" --font-size=16 \

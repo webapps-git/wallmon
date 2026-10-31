@@ -44,7 +44,7 @@ impl Reader {
             }
         }
         if self.postgres {
-            match run(Command::new("runuser").args(["-u", "postgres", "--", "psql", "-XAtq", "-c", POSTGRES_SQL]))
+            match run(Command::new("setpriv").args(["--reuid=postgres", "--regid=postgres", "--init-groups", "--", "psql", "-XAtq", "-c", POSTGRES_SQL]))
                 .and_then(|out| parse_postgres(&out))
             {
                 Ok(p) => d.postgres = Some(p),
