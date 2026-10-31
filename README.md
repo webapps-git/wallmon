@@ -2,6 +2,8 @@
 
 An always-on server status board for a monitor in the server room.
 
+![wallmon in demo mode](assets/screenshot.png)
+
 One screen shows everything at once, readable from across the room, with no keyboard needed. There are no tabs, no scrolling and no alarms. Yellow and red mean a problem, and grey means no data. Each panel has its own time limit, so one stuck source never freezes the screen, and stale values are marked with their age. On a smaller terminal the panels get narrower and the lists shorter, but the layout stays the same.
 
 wallmon is a single static binary written in Rust (ratatui + tokio). It runs all day using a fraction of a percent of CPU and a few tens of MB of RAM.
