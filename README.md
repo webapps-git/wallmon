@@ -45,6 +45,46 @@ cargo run -- --demo
 
 wallmon reads `/etc/wallmon/config.toml` (or the file given with `--config`). Without a file it shows only what it finds by itself. Start from [`config.toml.example`](config.toml.example), which lists every section and option.
 
+## Download
+
+Each [release](https://github.com/webapps-git/wallmon/releases) has a `.deb` package and a `.tar.gz` bundle with the static binary, the service and the install scripts. Both are for Linux on x86_64.
+
+## Install on the server
+
+wallmon takes the place of the login prompt on tty1, running in [kmscon](https://github.com/Aetf/kmscon), which gives full colour and braille graphs on the console. Ctrl+Alt+F2 switches to a normal login on tty2. It runs as root, because Docker, the databases, fail2ban, RAPL and `smartctl` need it. Use either the package or the bundle, not both.
+
+### Package
+
+kmscon is not in Debian 13 itself, so on trixie enable `trixie-backports` and install it from there first:
+
+```sh
+apt install -t trixie-backports kmscon
+```
+
+Then, as root:
+
+```sh
+apt install ./wallmon_0.1.0_amd64.deb
+```
+
+The package installs `/usr/bin/wallmon` and `wallmon.service`, masks `getty@tty1` and starts the service. Copy `/usr/share/doc/wallmon/config.toml.example` to `/etc/wallmon/config.toml` and adjust it, then `systemctl restart wallmon`. `apt remove wallmon` gives tty1 back to the login prompt, and `apt purge wallmon` also deletes `/etc/wallmon`.
+
+### Bundle
+
+Unpack the bundle on the server and run as root:
+
+```sh
+./install.sh
+```
+
+It installs kmscon (from trixie-backports on Debian 13) if it is missing, copies the binary, the systemd service and the configuration, masks `getty@tty1` and starts `wallmon.service`. Running it again upgrades the binary and keeps the existing configuration.
+
+To remove everything `install.sh` added, including kmscon and the packages that came with it:
+
+```sh
+/var/lib/wallmon/uninstall.sh
+```
+
 ## Build
 
 wallmon targets Linux on x86_64 and is built as a static musl binary. With [`cargo-zigbuild`](https://github.com/rust-cross/cargo-zigbuild) it can be cross-compiled from macOS:
@@ -53,25 +93,7 @@ wallmon targets Linux on x86_64 and is built as a static musl binary. With [`car
 cargo zigbuild --release --target x86_64-unknown-linux-musl
 ```
 
-`packaging/bundle.sh [config.toml]` builds the binary and packs it with the service and the install scripts into `target/wallmon.tar.gz`.
-
-## Install on the server
-
-The bundle replaces the login prompt on tty1 with wallmon running in [kmscon](https://github.com/Aetf/kmscon), which gives full colour and braille graphs on the console. Unpack `wallmon.tar.gz` on the server and run as root:
-
-```sh
-./install.sh
-```
-
-It installs kmscon (from trixie-backports on Debian 13) if it is missing, copies the binary, the systemd service and the configuration, masks `getty@tty1` and starts `wallmon.service`. Running it again upgrades the binary and keeps the existing configuration. Ctrl+Alt+F2 switches to a normal login on tty2.
-
-wallmon runs as root, because Docker, the databases, fail2ban, RAPL and `smartctl` need it.
-
-To remove everything `install.sh` added, including kmscon and the packages that came with it:
-
-```sh
-/var/lib/wallmon/uninstall.sh
-```
+`packaging/bundle.sh [config.toml]` builds the binary and packs it with the service and the install scripts into `target/wallmon.tar.gz`. `packaging/deb.sh` builds `target/wallmon_<version>_amd64.deb`; it needs only `tar` and `ar`, so it works on macOS too.
 
 ## License
 
