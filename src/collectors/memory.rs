@@ -21,7 +21,7 @@ pub fn parse(s: &str) -> Result<Memory, String> {
             Some((k, v.split_whitespace().next()?.parse().ok()?))
         })
         .collect();
-    let get = |k: &str| kb.get(k).copied().map(|v| v * 1024).ok_or(format!("/proc/meminfo: brak {k}"));
+    let get = |k: &str| kb.get(k).copied().map(|v| v * 1024).ok_or(format!("/proc/meminfo: no {k}"));
     let total = get("MemTotal")?;
     let available = get("MemAvailable")?;
     let cache = get("Buffers")? + get("Cached")? + get("SReclaimable").unwrap_or(0);

@@ -14,11 +14,13 @@ use wallmon::state::State;
 use wallmon::ui;
 
 const USAGE: &str = "\
-Usage: wallmon [--config PATH] [--demo | --demo=failure]
+Usage: wallmon [--config PATH] [--demo | --demo=failure] [--basic]
 
   --config PATH    configuration file (default: /etc/wallmon/config.toml)
   --demo           made-up data, for trying wallmon out without a server
   --demo=failure   made-up data with an ongoing failure
+  --basic          16 colours and no braille, as on the plain Linux console
+                   (chosen by itself when TERM is linux)
   -h, --help       show this help
   -V, --version    show the version
 
@@ -27,10 +29,11 @@ The keyboard is ignored. Ctrl+C quits.";
 struct Args {
     config: Option<PathBuf>,
     demo: Option<Scenario>,
+    basic: bool,
 }
 
 fn parse_args() -> Result<Option<Args>, String> {
-    let mut args = Args { config: None, demo: None };
+    let mut args = Args { config: None, demo: None, basic: false };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -44,6 +47,7 @@ fn parse_args() -> Result<Option<Args>, String> {
             }
             "--demo" => args.demo = Some(Scenario::Normal),
             "--demo=failure" => args.demo = Some(Scenario::Failure),
+            "--basic" => args.basic = true,
             "--config" => args.config = Some(it.next().ok_or("--config needs a path")?.into()),
             _ => match a.strip_prefix("--config=") {
                 Some(p) => args.config = Some(p.into()),
@@ -63,6 +67,13 @@ fn load_config(args: &Args) -> Result<Config, String> {
             if path.exists() { Config::load(path) } else { Ok(Config::default()) }
         }
     }
+}
+
+/// The plain Linux console has 16 colours and fonts without braille. kmscon and terminal
+/// emulators set another TERM, or announce full colour in COLORTERM.
+fn look(args: &Args) -> ui::Look {
+    let var = |k| std::env::var(k).unwrap_or_default();
+    if args.basic || (var("TERM") == "linux" && var("COLORTERM").is_empty()) { ui::Look::Basic } else { ui::Look::Full }
 }
 
 fn system_hostname() -> String {
@@ -124,7 +135,8 @@ fn main() -> ExitCode {
         });
     }
 
-    let result = screen::enter().and_then(|mut s| run(&mut s, &state, &config, &quit, &resized));
+    let look = look(&args);
+    let result = screen::enter().and_then(|mut s| run(&mut s, &state, &config, look, &quit, &resized));
     screen::leave();
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -163,11 +175,11 @@ fn watch_resize(flag: Arc<AtomicBool>) {
 }
 
 /// Draws a frame at every full second, or at once after a resize.
-fn run(screen: &mut screen::Screen, state: &Shared, config: &Config, quit: &AtomicBool, resized: &AtomicBool) -> std::io::Result<()> {
+fn run(screen: &mut screen::Screen, state: &Shared, config: &Config, look: ui::Look, quit: &AtomicBool, resized: &AtomicBool) -> std::io::Result<()> {
     loop {
         {
             let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            screen.draw(|f| ui::draw(f, &s, config, Instant::now(), chrono::Local::now()))?;
+            screen.draw(|f| ui::draw(f, &s, config, Instant::now(), chrono::Local::now(), look))?;
         }
         loop {
             if quit.load(Ordering::Relaxed) {

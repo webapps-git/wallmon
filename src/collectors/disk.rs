@@ -75,12 +75,12 @@ impl WearReader {
     }
 
     pub fn read(&mut self) -> Result<f64, String> {
-        let dev = self.device.as_ref().ok_or("nie znaleziono dysku")?;
+        let dev = self.device.as_ref().ok_or("disk not found")?;
         let out = Command::new("smartctl").args(["-j", "-A", dev]).output().map_err(|e| format!("smartctl: {e}"))?;
         let json: serde_json::Value = serde_json::from_slice(&out.stdout).map_err(|e| format!("smartctl: {e}"))?;
         json["nvme_smart_health_information_log"]["percentage_used"]
             .as_f64()
-            .ok_or_else(|| "smartctl: brak percentage_used".into())
+            .ok_or_else(|| "smartctl: no percentage_used".into())
     }
 }
 

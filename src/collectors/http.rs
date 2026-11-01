@@ -8,14 +8,14 @@ use std::time::Duration;
 
 /// GET `http://host[:port]/path`. Returns the status code and body.
 pub fn get(url: &str, timeout: Duration) -> Result<(u16, String), String> {
-    let rest = url.strip_prefix("http://").ok_or(format!("{url}: obsługiwany jest tylko adres http://"))?;
+    let rest = url.strip_prefix("http://").ok_or(format!("{url}: only http:// addresses are supported"))?;
     let (authority, path) = rest.split_once('/').map_or((rest, "/".to_string()), |(a, p)| (a, format!("/{p}")));
     let target = if authority.contains(':') { authority.to_string() } else { format!("{authority}:80") };
     let addr = target
         .to_socket_addrs()
         .map_err(|e| format!("{authority}: {e}"))?
         .next()
-        .ok_or(format!("{authority}: brak adresu"))?;
+        .ok_or(format!("{authority}: no address"))?;
     let stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| format!("{authority}: {e}"))?;
     stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
     stream.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
@@ -39,14 +39,14 @@ fn request<S: Read + Write>(mut s: S, host: &str, path: &str) -> Result<(u16, St
 }
 
 pub fn parse_response(raw: &[u8]) -> Result<(u16, String), String> {
-    let end = find(raw, b"\r\n\r\n").ok_or("niepełna odpowiedź HTTP")?;
+    let end = find(raw, b"\r\n\r\n").ok_or("incomplete HTTP response")?;
     let head = String::from_utf8_lossy(&raw[..end]);
     let body = &raw[end + 4..];
     let code = head
         .split_whitespace()
         .nth(1)
         .and_then(|c| c.parse().ok())
-        .ok_or("nieznana odpowiedź HTTP")?;
+        .ok_or("unrecognised HTTP response")?;
     let chunked = head.lines().any(|l| {
         let l = l.to_ascii_lowercase();
         l.starts_with("transfer-encoding:") && l.contains("chunked")

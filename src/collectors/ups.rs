@@ -24,7 +24,7 @@ impl Reader {
             .to_socket_addrs()
             .map_err(|e| format!("{}: {e}", self.address))?
             .next()
-            .ok_or(format!("{}: brak adresu", self.address))?;
+            .ok_or(format!("{}: no address", self.address))?;
         let mut s = TcpStream::connect_timeout(&addr, TIMEOUT).map_err(|e| format!("apcupsd {}: {e}", self.address))?;
         s.set_read_timeout(Some(TIMEOUT)).map_err(|e| e.to_string())?;
         s.set_write_timeout(Some(TIMEOUT)).map_err(|e| e.to_string())?;
@@ -56,7 +56,7 @@ pub fn parse(text: &str) -> Result<Ups, String> {
         })
         .collect();
     let num = |k: &str| f.get(k).and_then(|v| v.split_whitespace().next()?.parse::<f64>().ok());
-    let status = f.get("STATUS").ok_or("apcupsd: brak STATUS")?;
+    let status = f.get("STATUS").ok_or("apcupsd: no STATUS")?;
     Ok(Ups {
         model: f.get("MODEL").map_or_else(|| "UPS".into(), |m| m.to_string()),
         on_battery: status.contains("ONBATT"),

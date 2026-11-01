@@ -90,7 +90,7 @@ pub fn parse_stat(s: &str) -> Result<Vec<Times>, String> {
             Times { busy: total - idle, total }
         })
         .collect();
-    if times.is_empty() { Err("/proc/stat: brak linii cpu".into()) } else { Ok(times) }
+    if times.is_empty() { Err("/proc/stat: no cpu line".into()) } else { Ok(times) }
 }
 
 fn percent(a: Times, b: Times) -> f64 {

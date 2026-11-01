@@ -22,9 +22,9 @@ impl Reader {
         if self.interface.is_none() {
             self.interface = read("/proc/net/route").ok().and_then(|r| default_route(&r));
         }
-        let iface = self.interface.clone().ok_or("nie znaleziono interfejsu z trasą domyślną")?;
+        let iface = self.interface.clone().ok_or("no interface with a default route")?;
         let (rx_total, tx_total) =
-            parse_dev(&read("/proc/net/dev")?, &iface).ok_or(format!("brak interfejsu {iface}"))?;
+            parse_dev(&read("/proc/net/dev")?, &iface).ok_or(format!("no interface {iface}"))?;
         let now = Instant::now();
         let (mut rx, mut tx) = (0.0, 0.0);
         if let Some((prx, ptx, pt)) = self.prev {

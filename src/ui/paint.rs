@@ -1,4 +1,6 @@
-//! Drawing primitives: frames with titles, text rows, bars and braille graphs.
+//! Drawing primitives: frames with titles, text rows, bars and graphs.
+
+use std::borrow::Cow;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -6,7 +8,32 @@ use ratatui::style::{Color, Style};
 
 use crate::state::History;
 
-pub const BACKGROUND: Color = Color::Rgb(0x0d, 0x11, 0x17);
+/// How much the terminal can show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Look {
+    /// 24-bit colour and braille graphs (kmscon, terminal emulators).
+    Full,
+    /// The plain Linux console: 16 colours and only the characters every console font has.
+    Basic,
+}
+
+impl Look {
+    pub fn background(self) -> Color {
+        match self {
+            Look::Full => Color::Rgb(0x0d, 0x11, 0x17),
+            Look::Basic => Color::Black,
+        }
+    }
+
+    /// Replaces characters that console fonts lack.
+    pub fn text(self, s: &str) -> Cow<'_, str> {
+        const SWAP: [(char, &str); 7] = [('●', "■"), ('—', "-"), ('–', "-"), ('…', "~"), ('↑', "^"), ('↓', "v"), ('×', "x")];
+        if self == Look::Full || !s.chars().any(|c| SWAP.iter().any(|(k, _)| *k == c)) {
+            return Cow::Borrowed(s);
+        }
+        Cow::Owned(s.chars().map(|c| SWAP.iter().find(|(k, _)| *k == c).map_or(c.to_string(), |(_, v)| v.to_string())).collect())
+    }
+}
 
 /// What a piece of the screen means. Colour follows from it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +57,14 @@ pub enum Tone {
 }
 
 impl Tone {
-    pub fn color(self) -> Color {
+    pub fn color(self, look: Look) -> Color {
+        match look {
+            Look::Full => self.rgb(),
+            Look::Basic => self.basic(),
+        }
+    }
+
+    fn rgb(self) -> Color {
         match self {
             Tone::Text => Color::Rgb(0xc9, 0xd1, 0xd9),
             Tone::Border => Color::Rgb(0x3d, 0x46, 0x56),
@@ -44,6 +78,33 @@ impl Tone {
             Tone::Hue(c) => c,
             Tone::Empty => Color::Rgb(0x23, 0x28, 0x31),
             Tone::Bright => Color::Rgb(0xff, 0xff, 0xff),
+        }
+    }
+
+    /// The nearest of the 16 console colours. Hues map only to blues, cyans, magentas and
+    /// greens, so yellow and red still mean a problem.
+    fn basic(self) -> Color {
+        match self {
+            Tone::Text | Tone::Fine | Tone::Title | Tone::Bright => Color::White,
+            Tone::Label => Color::Gray,
+            Tone::Border | Tone::NoData | Tone::Empty => Color::DarkGray,
+            Tone::Good => Color::LightGreen,
+            Tone::Warn => Color::LightYellow,
+            Tone::Bad => Color::LightRed,
+            Tone::Hue(Color::Rgb(r, g, b)) => {
+                const HUES: [(Color, [i32; 3]); 7] = [
+                    (Color::Cyan, [0x00, 0xaa, 0xaa]),
+                    (Color::LightCyan, [0x55, 0xff, 0xff]),
+                    (Color::LightBlue, [0x55, 0x55, 0xff]),
+                    (Color::Magenta, [0xaa, 0x00, 0xaa]),
+                    (Color::LightMagenta, [0xff, 0x55, 0xff]),
+                    (Color::Green, [0x00, 0xaa, 0x00]),
+                    (Color::LightGreen, [0x55, 0xff, 0x55]),
+                ];
+                let d = |c: &[i32; 3]| (c[0] - r as i32).pow(2) + (c[1] - g as i32).pow(2) + (c[2] - b as i32).pow(2);
+                HUES.iter().min_by_key(|(_, c)| d(c)).map_or(Color::White, |(c, _)| *c)
+            }
+            Tone::Hue(c) => c,
         }
     }
 }
@@ -164,11 +225,17 @@ pub struct Panel<'a> {
     pub h: usize,
     stale: bool,
     title_end: usize,
+    look: Look,
 }
 
-/// Draws a rounded frame with a title (and an age note for stale data) and returns its inside.
-pub fn frame<'a>(buf: &'a mut Buffer, r: Rect, title: &str, note: Option<&str>) -> Panel<'a> {
-    let border = Style::default().fg(Tone::Border.color());
+/// Draws a frame with a title (and an age note for stale data) and returns its inside.
+/// Corners are rounded where the font has them.
+pub fn frame<'a>(buf: &'a mut Buffer, r: Rect, title: &str, note: Option<&str>, look: Look) -> Panel<'a> {
+    let border = Style::default().fg(Tone::Border.color(look));
+    let corners = match look {
+        Look::Full => ["╭", "╮", "╰", "╯"],
+        Look::Basic => ["┌", "┐", "└", "┘"],
+    };
     if r.width >= 2 && r.height >= 2 {
         let (right, bottom) = (r.right() - 1, r.bottom() - 1);
         for x in r.x..=right {
@@ -179,19 +246,19 @@ pub fn frame<'a>(buf: &'a mut Buffer, r: Rect, title: &str, note: Option<&str>) 
             buf[(r.x, y)].set_symbol("│").set_style(border);
             buf[(right, y)].set_symbol("│").set_style(border);
         }
-        buf[(r.x, r.y)].set_symbol("╭");
-        buf[(right, r.y)].set_symbol("╮");
-        buf[(r.x, bottom)].set_symbol("╰");
-        buf[(right, bottom)].set_symbol("╯");
+        buf[(r.x, r.y)].set_symbol(corners[0]);
+        buf[(right, r.y)].set_symbol(corners[1]);
+        buf[(r.x, bottom)].set_symbol(corners[2]);
+        buf[(right, bottom)].set_symbol(corners[3]);
     }
     let room = (r.width as usize).saturating_sub(3);
     let tone = if note.is_some() { Tone::NoData } else { Tone::Title };
-    let head = format!(" {title} ");
-    buf.set_stringn(r.x + 2, r.y, &head, room, Style::default().fg(tone.color()));
+    let head = format!(" {} ", look.text(title));
+    buf.set_stringn(r.x + 2, r.y, &head, room, Style::default().fg(tone.color(look)));
     let mut end = 2 + head.chars().count();
     if let Some(note) = note {
-        let note = format!("· {note} ");
-        buf.set_stringn(r.x + end as u16, r.y, &note, room.saturating_sub(end), Style::default().fg(Tone::Label.color()));
+        let note = format!("· {} ", look.text(note));
+        buf.set_stringn(r.x + end as u16, r.y, &note, room.saturating_sub(end), Style::default().fg(Tone::Label.color(look)));
         end += note.chars().count();
     }
     Panel {
@@ -203,6 +270,7 @@ pub fn frame<'a>(buf: &'a mut Buffer, r: Rect, title: &str, note: Option<&str>) 
         h: (r.height as usize).saturating_sub(2),
         stale: note.is_some(),
         title_end: end,
+        look,
     }
 }
 
@@ -212,9 +280,8 @@ const RIGHT_DOTS: [u32; 4] = [0x80, 0x20, 0x10, 0x08];
 impl Panel<'_> {
     fn style(&self, tone: Tone) -> Style {
         let tone = if self.stale && tone != Tone::Empty { Tone::NoData } else { tone };
-        Style::default().fg(tone.color())
+        Style::default().fg(tone.color(self.look))
     }
-
 
     /// Writes text, clipped to the panel. Returns the column after it.
     pub fn put(&mut self, x: usize, y: usize, s: &str, tone: Tone) -> usize {
@@ -223,7 +290,8 @@ impl Panel<'_> {
         }
         let room = self.w - x;
         let style = self.style(tone);
-        self.buf.set_stringn(self.x + x as u16, self.y + y as u16, s, room, style);
+        let s = self.look.text(s);
+        self.buf.set_stringn(self.x + x as u16, self.y + y as u16, &s, room, style);
         x + s.chars().count().min(room)
     }
 
@@ -255,12 +323,18 @@ impl Panel<'_> {
 
     pub fn bar(&mut self, x: usize, y: usize, w: usize, frac: f64, tone: Tone) {
         let filled = (frac.clamp(0.0, 1.0) * w as f64).round() as usize;
+        let glyph = match self.look {
+            Look::Full => "▆",
+            Look::Basic => "▄",
+        };
         for i in 0..w {
-            self.put(x + i, y, "▆", if i < filled { tone } else { Tone::Empty });
+            self.put(x + i, y, glyph, if i < filled { tone } else { Tone::Empty });
         }
     }
 
-    /// Area graph of values in 0..1 drawn with braille, two samples per column, newest on the right.
+    /// Area graph of values in 0..1, newest on the right. Braille gives two samples per
+    /// column and four steps per row; the console falls back to one sample per column
+    /// drawn with half and full blocks.
     pub fn graph(&mut self, x: usize, y: usize, w: usize, h: usize, values: &[f64], tone: GraphTone) {
         if w == 0 || h == 0 {
             return;
@@ -268,35 +342,47 @@ impl Panel<'_> {
         let n = 2 * w;
         let tail = &values[values.len().saturating_sub(n)..];
         let vals: Vec<f64> = std::iter::repeat_n(0.0, n - tail.len()).chain(tail.iter().copied()).collect();
-        let total = h * 4;
+        let steps = match self.look {
+            Look::Full => 4,
+            Look::Basic => 2,
+        };
+        let total = h * steps;
         let dots = |a: f64| {
             let a = a.clamp(0.0, 1.0);
             let d = (a * total as f64).round() as usize;
             if a > 0.003 && d == 0 { 1 } else { d.min(total) }
         };
+        let row_tone = |r: usize| match tone {
+            GraphTone::Fixed(t) => t,
+            GraphTone::Level(hue) => {
+                let f = ((h - r) as f64 - 0.5) / h as f64;
+                on(lvl(f, 0.6, 0.85), hue)
+            }
+        };
         for col in 0..w {
-            let (da, db) = (dots(vals[2 * col]), dots(vals[2 * col + 1]));
+            let (a, b) = (vals[2 * col], vals[2 * col + 1]);
             for r in 0..h {
-                let base = (h - 1 - r) * 4;
-                let mut code = 0;
-                for dot in LEFT_DOTS.iter().take(da.saturating_sub(base)) {
-                    code |= dot;
-                }
-                for dot in RIGHT_DOTS.iter().take(db.saturating_sub(base)) {
-                    code |= dot;
-                }
-                if code == 0 {
-                    continue;
-                }
-                let tone = match tone {
-                    GraphTone::Fixed(t) => t,
-                    GraphTone::Level(hue) => {
-                        let f = ((h - r) as f64 - 0.5) / h as f64;
-                        on(lvl(f, 0.6, 0.85), hue)
+                let base = (h - 1 - r) * steps;
+                let glyph = match self.look {
+                    Look::Full => {
+                        let mut code = 0;
+                        for dot in LEFT_DOTS.iter().take(dots(a).saturating_sub(base)) {
+                            code |= dot;
+                        }
+                        for dot in RIGHT_DOTS.iter().take(dots(b).saturating_sub(base)) {
+                            code |= dot;
+                        }
+                        char::from_u32(0x2800 + code).filter(|_| code != 0)
                     }
+                    Look::Basic => match dots((a + b) / 2.0).saturating_sub(base) {
+                        0 => None,
+                        1 => Some('▄'),
+                        _ => Some('█'),
+                    },
                 };
-                let ch = char::from_u32(0x2800 + code).unwrap_or(' ');
-                self.put(x + col, y + r, ch.encode_utf8(&mut [0; 4]), tone);
+                if let Some(ch) = glyph {
+                    self.put(x + col, y + r, ch.encode_utf8(&mut [0; 4]), row_tone(r));
+                }
             }
         }
     }
@@ -306,7 +392,7 @@ impl Panel<'_> {
         if s.is_empty() {
             return;
         }
-        let s = format!(" {s} ");
+        let s = format!(" {} ", self.look.text(s));
         let n = s.chars().count();
         let fw = self.frame.width as usize;
         if fw < n + 4 + self.title_end {

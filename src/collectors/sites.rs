@@ -35,7 +35,7 @@ impl Reader {
                 .map(|(h, s)| {
                     h.join().unwrap_or_else(|_| Site {
                         name: s.name().to_string(),
-                        outcome: SiteOutcome::Error("błąd".into()),
+                        outcome: SiteOutcome::Error("error".into()),
                         accepted: false,
                     })
                 })
@@ -61,13 +61,13 @@ fn check(agent: &ureq::Agent, site: &config::Site) -> Site {
 fn short_error(e: &ureq::Error) -> &'static str {
     let text = e.to_string().to_lowercase();
     match e {
-        ureq::Error::HostNotFound => "błąd DNS",
-        ureq::Error::Rustls(_) | ureq::Error::Tls(_) => "błąd TLS",
-        _ if text.contains("certificate") || text.contains("tls") => "błąd TLS",
-        _ if text.contains("lookup") || text.contains("resolve") || text.contains("name or service") => "błąd DNS",
-        _ if text.contains("refused") => "odmowa",
-        _ if text.contains("timed out") => "limit czasu",
-        ureq::Error::ConnectionFailed => "brak połącz.",
-        _ => "błąd",
+        ureq::Error::HostNotFound => "DNS error",
+        ureq::Error::Rustls(_) | ureq::Error::Tls(_) => "TLS error",
+        _ if text.contains("certificate") || text.contains("tls") => "TLS error",
+        _ if text.contains("lookup") || text.contains("resolve") || text.contains("name or service") => "DNS error",
+        _ if text.contains("refused") => "refused",
+        _ if text.contains("timed out") => "timeout",
+        ureq::Error::ConnectionFailed => "no connection",
+        _ => "error",
     }
 }

@@ -65,7 +65,7 @@ impl Reader {
             }
         }
         if fan.is_none() && temps.is_empty() {
-            return Err("brak czujników".into());
+            return Err("no sensors".into());
         }
         Ok(Sensors { source: chips.join(" · "), fan, temps })
     }

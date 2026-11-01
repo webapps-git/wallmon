@@ -20,7 +20,7 @@ impl Reader {
         let all = match run(&["banned"]).ok().and_then(|out| parse_banned(&out)) {
             Some(all) => all,
             None => {
-                let list = parse_jail_list(&run(&["status"])?).ok_or("fail2ban-client: brak listy jaili")?;
+                let list = parse_jail_list(&run(&["status"])?).ok_or("fail2ban-client: no jail list")?;
                 list.into_iter()
                     .map(|name| {
                         let banned = run(&["status", &name]).ok().and_then(|s| parse_currently_banned(&s)).unwrap_or(0);
@@ -40,7 +40,7 @@ fn run(args: &[&str]) -> Result<String, String> {
     let out = Command::new("fail2ban-client").args(args).output().map_err(|e| format!("fail2ban-client: {e}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(format!("fail2ban-client: {}", err.lines().next().unwrap_or("błąd").trim()));
+        return Err(format!("fail2ban-client: {}", err.lines().next().unwrap_or("error").trim()));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

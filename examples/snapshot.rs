@@ -17,12 +17,14 @@ use serde_json::json;
 use wallmon::collectors::demo::{Demo, Scenario};
 use wallmon::config::Config;
 use wallmon::state::State;
-use wallmon::ui;
+use wallmon::ui::{self, Look};
 
-const SHOTS: [(&str, &str, Scenario, u16, u16); 3] = [
-    ("Normalna praca", "Monitor 1920×1080, 240×67 znaków.", Scenario::Normal, 240, 67),
-    ("Awaria", "wallmon --demo=failure, ten sam monitor.", Scenario::Failure, 240, 67),
-    ("Mały terminal przez SSH", "Okno 150×45 znaków.", Scenario::Normal, 150, 45),
+const SHOTS: [(&str, &str, Scenario, Look, u16, u16); 5] = [
+    ("Normal operation", "1920×1080 monitor in kmscon, 240×67 characters.", Scenario::Normal, Look::Full, 240, 67),
+    ("Failure", "wallmon --demo=failure, same monitor.", Scenario::Failure, Look::Full, 240, 67),
+    ("Small terminal over SSH", "150×45 character window.", Scenario::Normal, Look::Full, 150, 45),
+    ("Plain Linux console", "wallmon --basic: 16 colours, no braille, 240×67 characters.", Scenario::Normal, Look::Basic, 240, 67),
+    ("Plain Linux console, failure", "wallmon --basic --demo=failure.", Scenario::Failure, Look::Basic, 240, 67),
 ];
 
 fn main() {
@@ -58,11 +60,15 @@ fn live_screens(config: &Config, local: chrono::DateTime<chrono::Local>) -> Vec<
         tokio::time::sleep(Duration::from_secs(11)).await;
     });
     let state = state.lock().expect("state");
-    [("Prawdziwe dane", "wallmon na Linuksie, 240×67 znaków.", 240, 67), ("Prawdziwe dane, małe okno", "150×45 znaków.", 150, 45)]
+    [
+        ("Real data", "wallmon on Linux, 240×67 characters.", Look::Full, 240, 67),
+        ("Real data, small window", "150×45 characters.", Look::Full, 150, 45),
+        ("Real data, plain Linux console", "wallmon --basic, 240×67 characters.", Look::Basic, 240, 67),
+    ]
         .iter()
-        .map(|&(title, desc, w, h)| {
+        .map(|&(title, desc, look, w, h)| {
             let mut term = Terminal::new(TestBackend::new(w, h)).expect("test backend");
-            term.draw(|f| ui::draw(f, &state, config, Instant::now(), local)).expect("draw");
+            term.draw(|f| ui::draw(f, &state, config, Instant::now(), local, look)).expect("draw");
             encode(title, desc, term.backend().buffer())
         })
         .collect()
@@ -71,12 +77,12 @@ fn live_screens(config: &Config, local: chrono::DateTime<chrono::Local>) -> Vec<
 fn demo_screens(config: &Config, local: chrono::DateTime<chrono::Local>) -> Vec<serde_json::Value> {
     SHOTS
         .iter()
-        .map(|&(name, desc, scenario, w, h)| {
+        .map(|&(name, desc, scenario, look, w, h)| {
             let now = Instant::now();
             let mut state = State::new(config.general.name.clone().unwrap_or_else(|| "demo".into()));
             Demo::new(scenario, config).prefill(&mut state, now);
             let mut term = Terminal::new(TestBackend::new(w, h)).expect("test backend");
-            term.draw(|f| ui::draw(f, &state, config, now, local)).expect("draw");
+            term.draw(|f| ui::draw(f, &state, config, now, local, look)).expect("draw");
             encode(name, desc, term.backend().buffer())
         })
         .collect()
@@ -96,10 +102,7 @@ fn encode(name: &str, desc: &str, buf: &Buffer) -> serde_json::Value {
             let cell = &buf.content()[y * w + x];
             let sym = cell.symbol();
             row.push(if sym.is_empty() { " ".to_string() } else { sym.to_string() });
-            let hex = match cell.fg {
-                Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
-                _ => "#c9d1d9".into(),
-            };
+            let hex = hex(cell.fg);
             let i = *index.entry(hex.clone()).or_insert_with(|| {
                 palette.push(hex);
                 palette.len() - 1
@@ -109,15 +112,42 @@ fn encode(name: &str, desc: &str, buf: &Buffer) -> serde_json::Value {
         rows.push(row);
         colors.push(cols);
     }
-    json!({ "name": name, "desc": desc, "W": w, "H": h, "pal": palette, "rows": rows, "cols": colors })
+    let bg = buf.content().first().map_or("#0d1117".into(), |c| hex(c.bg));
+    json!({ "name": name, "desc": desc, "W": w, "H": h, "bg": bg, "pal": palette, "rows": rows, "cols": colors })
+}
+
+/// Named colours as the Linux console shows them (the VGA palette).
+fn hex(c: Color) -> String {
+    let vga = |i: usize| ["#000000", "#aa0000", "#00aa00", "#aa5500", "#0000aa", "#aa00aa", "#00aaaa", "#aaaaaa",
+                          "#555555", "#ff5555", "#55ff55", "#ffff55", "#5555ff", "#ff55ff", "#55ffff", "#ffffff"][i].to_string();
+    match c {
+        Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        Color::Black => vga(0),
+        Color::Red => vga(1),
+        Color::Green => vga(2),
+        Color::Yellow => vga(3),
+        Color::Blue => vga(4),
+        Color::Magenta => vga(5),
+        Color::Cyan => vga(6),
+        Color::Gray => vga(7),
+        Color::DarkGray => vga(8),
+        Color::LightRed => vga(9),
+        Color::LightGreen => vga(10),
+        Color::LightYellow => vga(11),
+        Color::LightBlue => vga(12),
+        Color::LightMagenta => vga(13),
+        Color::LightCyan => vga(14),
+        Color::White => vga(15),
+        _ => "#c9d1d9".into(),
+    }
 }
 
 const PAGE: &str = r#"<!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wallmon zrzuty</title>
+<title>wallmon screens</title>
 <style>
   body { background: #05070a; color: #c9d1d9; font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 24px 16px 64px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
@@ -128,14 +158,14 @@ const PAGE: &str = r#"<!doctype html>
 </head>
 <body>
 <h1>wallmon --demo</h1>
-<p>Zrzuty z programu, dane udawane. Siatka znaków jak w konsoli serwera (komórka 8×16 pikseli).</p>
+<p>Screens drawn by the program from made-up data, on the character grid of a server console (8×16 pixel cells).</p>
 <div id="out"></div>
 <script>
 const DATA = __DATA__;
-const BG = '#0d1117', CW = 8, CH = 16;
+const CW = 8, CH = 16;
 const BRAILLE = [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[0,3],[1,3]];
 function line(ctx, a, b, c, d) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); }
-function corner(ctx, ax, ay, cx, cy, bx, by) { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.arcTo(cx, cy, bx, by, 4); ctx.lineTo(bx, by); ctx.stroke(); }
+function corner(ctx, ax, ay, cx, cy, bx, by, r = 4) { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.arcTo(cx, cy, bx, by, r); ctx.lineTo(bx, by); ctx.stroke(); }
 function cell(ctx, ch, col, x, y) {
   const px = x * CW, py = y * CH, mx = px + 4.5, my = py + 8.5;
   ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
@@ -152,25 +182,51 @@ function cell(ctx, ch, col, x, y) {
     case '╮': return corner(ctx, px, my, mx, my, mx, py + CH);
     case '╰': return corner(ctx, mx, py, mx, my, px + CW, my);
     case '╯': return corner(ctx, mx, py, mx, my, px, my);
+    case '┌': return corner(ctx, px + CW, my, mx, my, mx, py + CH, 0);
+    case '┐': return corner(ctx, px, my, mx, my, mx, py + CH, 0);
+    case '└': return corner(ctx, mx, py, mx, my, px + CW, my, 0);
+    case '┘': return corner(ctx, mx, py, mx, my, px, my, 0);
     case '▆': return ctx.fillRect(px, py + 4, CW, 12);
+    case '▄': return ctx.fillRect(px, py + 8, CW, 8);
+    case '█': return ctx.fillRect(px, py, CW, CH);
+    case '■': return ctx.fillRect(px + 1, py + 5, 6, 6);
     case '●': ctx.beginPath(); ctx.arc(px + 4, py + 8, 3.5, 0, 2 * Math.PI); ctx.fill(); return;
   }
   ctx.fillText(ch, px, py + 9);
 }
-for (const v of DATA) {
-  const h = document.createElement('h2'); h.textContent = v.name; out.appendChild(h);
-  const p = document.createElement('p'); p.textContent = v.desc; out.appendChild(p);
+function paint(v, dpr) {
   const c = document.createElement('canvas');
-  const dpr = Math.max(2, window.devicePixelRatio || 1);
   c.width = v.W * CW * dpr; c.height = v.H * CH * dpr;
-  c.style.width = (v.W * CW) + 'px';
-  out.appendChild(c);
   const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
-  ctx.fillStyle = BG; ctx.fillRect(0, 0, v.W * CW, v.H * CH);
+  ctx.fillStyle = v.bg; ctx.fillRect(0, 0, v.W * CW, v.H * CH);
   ctx.font = '13px Menlo, "DejaVu Sans Mono", monospace'; ctx.textBaseline = 'middle';
   for (let y = 0; y < v.H; y++)
     for (let x = 0; x < v.W; x++)
       if (v.rows[y][x] !== ' ') cell(ctx, v.rows[y][x], v.pal[v.cols[y][x]], x, y);
+  return c;
+}
+for (const v of DATA) {
+  const h = document.createElement('h2'); h.textContent = v.name; out.appendChild(h);
+  const p = document.createElement('p'); p.textContent = v.desc + ' '; out.appendChild(p);
+  // The saved PNG has one pixel per console pixel, as the screen in the server room.
+  const a = document.createElement('a');
+  a.textContent = 'Save PNG';
+  a.href = '#';
+  a.onclick = e => {
+    e.preventDefault();
+    const bytes = atob(paint(v, 1).toDataURL('image/png').split(',')[1]);
+    const blob = new Blob([Uint8Array.from(bytes, ch => ch.charCodeAt(0))], { type: 'image/png' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'wallmon-' + v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '') + '.png';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+  p.appendChild(a);
+  const c = paint(v, Math.max(2, window.devicePixelRatio || 1));
+  c.style.width = (v.W * CW) + 'px';
+  out.appendChild(c);
 }
 </script>
 </body>

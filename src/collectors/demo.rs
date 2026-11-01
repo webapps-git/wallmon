@@ -281,7 +281,7 @@ impl Demo {
     /// Fails during the failure scenario, as a hung `fail2ban-client` would.
     pub fn fail2ban(&self, t: f64) -> Result<Vec<Jail>, String> {
         if self.failing(t) > 0.5 {
-            return Err("brak odpowiedzi".into());
+            return Err("no answer".into());
         }
         Ok(self
             .jails

@@ -59,7 +59,7 @@ impl Reader {
 
     fn mariadb(&mut self, out: &str) -> Result<MariaDb, String> {
         let v: HashMap<&str, &str> = out.lines().filter_map(|l| l.split_once('\t')).collect();
-        let num = |k: &str| v.get(k).and_then(|s| s.trim().parse::<u64>().ok()).ok_or(format!("brak {k}"));
+        let num = |k: &str| v.get(k).and_then(|s| s.trim().parse::<u64>().ok()).ok_or(format!("no {k}"));
         let (questions, slow) = (num("Questions")?, num("Slow_queries")?);
         let now = Instant::now();
         let (qps, slow_per_min) = match self.prev {
@@ -86,7 +86,7 @@ fn run(cmd: &mut Command) -> Result<String, String> {
     let out = cmd.output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(err.lines().next().unwrap_or("błąd").trim().to_string());
+        return Err(err.lines().next().unwrap_or("error").trim().to_string());
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

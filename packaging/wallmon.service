@@ -1,5 +1,6 @@
-# wallmon on the server-room monitor: kmscon on tty1 runs wallmon instead of a login prompt.
-# Ctrl+Alt+F2 switches to a normal login on tty2.
+# wallmon on the server-room monitor: wallmon runs on tty1 instead of a login prompt.
+# Ctrl+Alt+F2 switches to a normal login on tty2. To run it in kmscon instead of the
+# plain console, see "Console" in the README.
 
 [Unit]
 Description=wallmon status board on tty1
@@ -12,19 +13,21 @@ IgnoreOnIsolate=yes
 ConditionPathExists=/dev/tty0
 
 [Service]
-# --dpms-timeout=0: kmscon would otherwise blank the screen after 10 minutes without input.
-# --no-reset-env: wallmon needs PATH from systemd to find mariadb, setpriv and the like.
-# --oneshot: kmscon exits together with wallmon, and systemd starts both again.
-ExecStart=/usr/bin/kmscon --vt=tty1 --no-switchvt --oneshot --no-reset-env --dpms-timeout=0 \
-    --no-mouse --no-blink --session-max=1 "--font-name=DejaVu Sans Mono" --font-size=16 \
-    --login -- /usr/local/bin/wallmon
-Restart=always
-RestartSec=5
-Nice=5
+# The plain console: wallmon sees TERM=linux and draws with 16 colours and no braille.
+Environment=TERM=linux
+# Keep the console from blanking the screen; the keyboard is never touched.
+ExecStartPre=-/usr/bin/setterm --blank 0 --powerdown 0
+ExecStart=/usr/local/sbin/wallmon
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
 TTYPath=/dev/tty1
 TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
+Restart=always
+RestartSec=5
+Nice=5
 
 [Install]
 WantedBy=multi-user.target

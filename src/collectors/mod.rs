@@ -48,7 +48,7 @@ where
 {
     tokio::task::spawn_blocking(move || {
         let Ok(mut r) = reader.try_lock() else {
-            return Err("poprzedni odczyt jeszcze trwa".into());
+            return Err("previous read still running".into());
         };
         f(&mut r)
     })
@@ -129,7 +129,7 @@ where
             tick.tick().await;
             let result = match timeout(limit, fetch()).await {
                 Ok(r) => r,
-                Err(_) => Err(format!("brak odpowiedzi w {} s", limit.as_secs())),
+                Err(_) => Err(format!("no answer within {} s", limit.as_secs())),
             };
             let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
             apply(&mut s, result, Instant::now());

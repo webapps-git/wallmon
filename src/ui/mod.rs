@@ -14,7 +14,9 @@ use ratatui::style::Style;
 
 use crate::config::Config;
 use crate::state::{Reading, State};
-use paint::{BACKGROUND, Panel, Tone, frame};
+use paint::{Panel, Tone, frame};
+
+pub use paint::Look;
 
 /// Smaller terminals get a short message instead of a broken layout.
 pub const MIN_WIDTH: u16 = 100;
@@ -69,19 +71,19 @@ fn split(total: u16, weights: &[f64]) -> Vec<u16> {
     parts
 }
 
-pub fn draw(f: &mut Frame, st: &State, cfg: &Config, now: Instant, local: DateTime<Local>) {
+pub fn draw(f: &mut Frame, st: &State, cfg: &Config, now: Instant, local: DateTime<Local>, look: Look) {
     let area = f.area();
     let buf = f.buffer_mut();
-    buf.set_style(area, Style::default().bg(BACKGROUND));
+    buf.set_style(area, Style::default().bg(look.background()));
 
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
-        let msg = format!("Za mały terminal: {}×{}, potrzeba {MIN_WIDTH}×{MIN_HEIGHT}", area.width, area.height);
-        buf.set_stringn(area.x, area.y, msg, area.width as usize, Style::default().fg(Tone::Warn.color()));
+        let msg = format!("Terminal too small: {}x{}, needs {MIN_WIDTH}x{MIN_HEIGHT}", area.width, area.height);
+        buf.set_stringn(area.x, area.y, msg, area.width as usize, Style::default().fg(Tone::Warn.color(look)));
         return;
     }
 
     let head = Rect { height: 3, ..area };
-    let mut p = frame(buf, head, &st.hostname, None);
+    let mut p = frame(buf, head, &st.hostname, None, look);
     panels::header(&mut p, st.host.value.as_ref(), &local);
 
     let bands: Vec<(f64, Vec<(Id, f64)>)> = BANDS
@@ -95,45 +97,45 @@ pub fn draw(f: &mut Frame, st: &State, cfg: &Config, now: Instant, local: DateTi
         let widths = split(area.width, &ps.iter().map(|p| p.1).collect::<Vec<_>>());
         let mut x = area.x;
         for ((id, _), w) in ps.iter().zip(widths) {
-            draw_panel(buf, Rect::new(x, y, w, h), *id, st, now);
+            draw_panel(buf, Rect::new(x, y, w, h), *id, st, now, look);
             x += w;
         }
         y += h;
     }
 }
 
-fn draw_panel(buf: &mut Buffer, r: Rect, id: Id, st: &State, now: Instant) {
+fn draw_panel(buf: &mut Buffer, r: Rect, id: Id, st: &State, now: Instant, look: Look) {
     match id {
-        Id::Cpu => show(buf, r, "CPU", &st.cpu, now, |p, v| panels::cpu(p, v, &st.cpu_history)),
-        Id::Processes => show(buf, r, "Procesy", &st.processes, now, |p, v| panels::processes(p, v)),
-        Id::Apache => show(buf, r, "Apache", &st.apache, now, |p, v| panels::apache(p, v, &st.apache_history)),
-        Id::Containers => show(buf, r, "Kontenery", &st.containers, now, |p, v| panels::containers(p, v)),
-        Id::Ups => show(buf, r, "UPS", &st.ups, now, panels::ups),
-        Id::Memory => show(buf, r, "Pamięć", &st.memory, now, |p, v| panels::memory(p, v, &st.memory_history)),
-        Id::Disk => show(buf, r, "Dysk", &st.disk, now, |p, v| {
+        Id::Cpu => show(buf, r, "CPU", &st.cpu, now, look, |p, v| panels::cpu(p, v, &st.cpu_history)),
+        Id::Processes => show(buf, r, "Processes", &st.processes, now, look, |p, v| panels::processes(p, v)),
+        Id::Apache => show(buf, r, "Apache", &st.apache, now, look, |p, v| panels::apache(p, v, &st.apache_history)),
+        Id::Containers => show(buf, r, "Containers", &st.containers, now, look, |p, v| panels::containers(p, v)),
+        Id::Ups => show(buf, r, "UPS", &st.ups, now, look, panels::ups),
+        Id::Memory => show(buf, r, "Memory", &st.memory, now, look, |p, v| panels::memory(p, v, &st.memory_history)),
+        Id::Disk => show(buf, r, "Disk", &st.disk, now, look, |p, v| {
             panels::disk(p, v, &st.disk_read_history, &st.disk_write_history, st.disk_wear.value)
         }),
-        Id::Network => show(buf, r, "Sieć", &st.network, now, |p, v| {
+        Id::Network => show(buf, r, "Network", &st.network, now, look, |p, v| {
             panels::network(p, v, &st.rx_history, &st.tx_history)
         }),
-        Id::Sensors => show(buf, r, "Czujniki", &st.sensors, now, panels::sensors),
-        Id::Services => show(buf, r, "Usługi", &st.services, now, panels::services),
-        Id::Sites => show(buf, r, "Strony", &st.sites, now, |p, v| panels::sites(p, v, st.sites.age(now))),
-        Id::Databases => show(buf, r, "Bazy", &st.databases, now, panels::databases),
-        Id::Fail2ban => show(buf, r, "fail2ban", &st.fail2ban, now, |p, v| panels::fail2ban(p, v)),
+        Id::Sensors => show(buf, r, "Sensors", &st.sensors, now, look, panels::sensors),
+        Id::Services => show(buf, r, "Services", &st.services, now, look, panels::services),
+        Id::Sites => show(buf, r, "Sites", &st.sites, now, look, |p, v| panels::sites(p, v, st.sites.age(now))),
+        Id::Databases => show(buf, r, "Databases", &st.databases, now, look, panels::databases),
+        Id::Fail2ban => show(buf, r, "fail2ban", &st.fail2ban, now, look, |p, v| panels::fail2ban(p, v)),
     }
 }
 
 /// Frame plus contents. Old data is greyed out and its age goes into the title;
-/// a source that never answered shows "brak danych".
-fn show<T>(buf: &mut Buffer, r: Rect, title: &str, reading: &Reading<T>, now: Instant, body: impl FnOnce(&mut Panel, &T)) {
+/// a source that never answered shows "no data".
+fn show<T>(buf: &mut Buffer, r: Rect, title: &str, reading: &Reading<T>, now: Instant, look: Look, body: impl FnOnce(&mut Panel, &T)) {
     let stale: Option<Duration> = reading.value.as_ref().and(reading.stale_for(now));
-    let note = stale.map(|age| format!("dane sprzed {}", format::age(age)));
-    let mut p = frame(buf, r, title, note.as_deref());
+    let note = stale.map(|age| format!("data {} old", format::age(age)));
+    let mut p = frame(buf, r, title, note.as_deref(), look);
     match &reading.value {
         Some(v) => body(&mut p, v),
         None => {
-            p.put(0, 0, "brak danych", Tone::NoData);
+            p.put(0, 0, "no data", Tone::NoData);
             if let Some(e) = &reading.error {
                 p.put(0, 1, e, Tone::NoData);
             }

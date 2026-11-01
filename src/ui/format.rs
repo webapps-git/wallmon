@@ -1,15 +1,9 @@
-//! Numbers, sizes and times written the way the screen shows them (Polish).
+//! Numbers, sizes and times written the way the screen shows them.
 
 use std::time::Duration;
 
 const MIB: f64 = 1024.0 * 1024.0;
 const GIB: f64 = MIB * 1024.0;
-
-pub const WEEKDAYS: [&str; 7] = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"];
-pub const MONTHS: [&str; 12] = [
-    "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
-    "lipca", "sierpnia", "września", "października", "listopada", "grudnia",
-];
 
 pub fn gb(bytes: u64) -> f64 {
     bytes as f64 / GIB
@@ -54,19 +48,13 @@ pub fn uptime(d: Duration) -> String {
     let s = d.as_secs();
     let (days, hours, mins) = (s / 86400, s / 3600 % 24, s / 60 % 60);
     if days > 0 {
-        format!("{days} {} {hours} h {mins} min", if days == 1 { "dzień" } else { "dni" })
+        format!("{days} {} {hours} h {mins} min", plural(days as usize, "day", "days"))
     } else {
         format!("{hours} h {mins} min")
     }
 }
 
-/// Polish plural form: 1 wątek, 2 wątki, 5 wątków.
-pub fn plural<'a>(n: usize, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
-    if n == 1 {
-        one
-    } else if (2..=4).contains(&(n % 10)) && !(12..=14).contains(&(n % 100)) {
-        few
-    } else {
-        many
-    }
+/// 1 thread, 2 threads.
+pub fn plural<'a>(n: usize, one: &'a str, many: &'a str) -> &'a str {
+    if n == 1 { one } else { many }
 }
