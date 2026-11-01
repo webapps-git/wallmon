@@ -262,16 +262,19 @@ pub fn memory(p: &mut Panel, m: &Memory, history: &History) {
     p.graph(0, 3, w, gh, &resample(history, w * 2, 1.0), GraphTone::Level(hue::RAM));
 }
 
-/// Two labelled graphs one above the other, on a common scale.
+/// Two labelled graphs one above the other, on a common scale. An odd spare row goes
+/// between them, so the lower graph always ends right above the reserved rows.
 #[allow(clippy::too_many_arguments)]
 fn graph_pair(p: &mut Panel, y0: usize, a: (&str, String, &History, Tone), b: (&str, String, &History, Tone), reserve: usize) {
-    let k = p.h.saturating_sub(y0 + reserve + 2) / 2;
+    let rows = p.h.saturating_sub(y0 + reserve + 2);
+    let (k, spare) = (rows / 2, rows % 2);
     let top = (a.2.max().max(b.2.max()) * 1.1).max(1.0);
     let w = p.w;
     p.row(y0, 0, None, &[t(format!("{} ", a.0), Label), t(a.1, Bright)]);
     p.graph(0, y0 + 1, w, k, &resample(a.2, w * 2, top), GraphTone::Fixed(a.3));
-    p.row(y0 + 1 + k, 0, None, &[t(format!("{} ", b.0), Label), t(b.1, Bright)]);
-    p.graph(0, y0 + 2 + k, w, k, &resample(b.2, w * 2, top), GraphTone::Fixed(b.3));
+    let y1 = y0 + 1 + k + spare;
+    p.row(y1, 0, None, &[t(format!("{} ", b.0), Label), t(b.1, Bright)]);
+    p.graph(0, y1 + 1, w, k, &resample(b.2, w * 2, top), GraphTone::Fixed(b.3));
 }
 
 pub fn disk(p: &mut Panel, d: &Disk, read: &History, write: &History, wear: Option<f64>) {
@@ -310,19 +313,20 @@ pub fn network(p: &mut Panel, n: &Network, rx: &History, tx: &History) {
     } else {
         p.title_right(&format!("{} · {}", n.interface, n.address));
     }
-    graph_pair(
-        p,
-        0,
-        ("↓ in", format::bit_rate(n.rx), rx, hue::NET_RX),
-        ("↑ out", format::bit_rate(n.tx), tx, hue::NET_TX),
-        1,
-    );
+    // TCP on the top row, where the disk panel next to it has its usage bar, so the graphs
+    // of both panels line up.
     let variants = [
         vec![t("TCP connections ", Label), t(n.tcp.to_string(), Text), t("    established ", Label), t(n.established.to_string(), Text)],
         vec![t("TCP ", Label), t(n.tcp.to_string(), Text), t("  established ", Label), t(n.established.to_string(), Text)],
     ];
-    let y = p.h.saturating_sub(1);
-    p.row(y, 0, None, pick(p.w, &variants));
+    p.row(0, 0, None, pick(p.w, &variants));
+    graph_pair(
+        p,
+        1,
+        ("↓ in", format::bit_rate(n.rx), rx, hue::NET_RX),
+        ("↑ out", format::bit_rate(n.tx), tx, hue::NET_TX),
+        1,
+    );
 }
 
 pub fn sensors(p: &mut Panel, s: &Sensors) {
